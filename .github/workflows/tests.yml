@@ -3,6 +3,8 @@ name: Tests
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -10,8 +12,6 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-  pull_request:
-    branches: [main]
 
 jobs:
   test:

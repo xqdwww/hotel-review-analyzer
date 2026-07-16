@@ -61,17 +61,32 @@ Existing output files are not overwritten unless `--force` is supplied.
 
 ### Output Format
 
+An abridged JSON report looks like this:
+
 ```json
 {
-  "hotel": {"name": "Example Hotel", "location": "City Center"},
-  "risk_level": "moderate",
-  "overall_risk_score": 35.0,
-  "confidence": "medium",
-  "risk_categories": {"noise": 1, "hygiene": 0},
+  "hotel": {"name": "Example Hotel", "location": "Downtown Area"},
+  "risk_level": "low",
+  "overall_risk_score": 16.6,
+  "confidence": "low",
+  "traveler_profile": {
+    "trip_type": "general",
+    "priorities": {"hygiene": 1.0, "noise": 1.0}
+  },
+  "risk_categories": {"noise": 1, "hygiene": 1, "hot_water": 1},
+  "evidence_counts": {
+    "total_reviews": 3,
+    "analyzed_reviews": 3,
+    "total_issues": 3
+  },
+  "evidence": [
+    {"review_id": "r2", "category": "noise", "matched_keywords": ["traffic noise"]}
+  ],
   "pre_booking_checklist": ["Verify: Noise and soundproofing issues"],
   "explainability": {
-    "rule_trace": {...}
-  }
+    "rule_trace": {"formula": "category review rate * normalized category weight"}
+  },
+  "limitations": ["Analysis based on text keyword matching only"]
 }
 ```
 
