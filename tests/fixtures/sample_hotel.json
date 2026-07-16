@@ -1,0 +1,26 @@
+{
+  "hotel": {
+    "name": "Example Hotel",
+    "location": "Downtown Area"
+  },
+  "reviews": [
+    {
+      "id": "r1",
+      "rating": 4,
+      "date": "2026-01-01",
+      "text": "The room was clean and comfortable. Staff was friendly."
+    },
+    {
+      "id": "r2",
+      "rating": 3,
+      "date": "2026-01-02",
+      "text": "Good location but traffic noise was noticeable at night. AC worked well."
+    },
+    {
+      "id": "r3",
+      "rating": 2,
+      "date": "2026-01-03",
+      "text": "Room was not clean, found hair on the floor. Hot water was unstable."
+    }
+  ]
+}
