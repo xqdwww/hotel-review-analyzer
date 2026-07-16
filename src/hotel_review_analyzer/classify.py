@@ -1,5 +1,6 @@
 """Review classification and scoring engine."""
 
+import math
 from typing import Any, Dict, List
 from .schema import (
     DEFAULT_HOTEL_WEIGHTS,
@@ -69,7 +70,7 @@ def classify_reviews(reviews: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]
     # Deduplicate keywords
     for category in classification["categories"]:
         classification["categories"][category]["keywords_found"] = list(
-            set(classification["categories"][category]["keywords_found"])
+            dict.fromkeys(classification["categories"][category]["keywords_found"])
         )
     
     return classification
@@ -96,43 +97,52 @@ def calculate_risk_score(
     if traveler_profile is None:
         traveler_profile = DEFAULT_TRAVELER_PROFILE.copy()
     
-    # Apply traveler priorities to weights
+    if any(
+        isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0
+        for value in weights.values()
+    ):
+        raise ValueError("weights must contain finite non-negative numbers")
+
+    # Apply traveler priorities to weights. Priority names use the same category
+    # identifiers as the classifier so every documented profile has an effect.
     priorities = traveler_profile.get("priorities", {})
     adjusted_weights = {}
     for category, base_weight in weights.items():
         priority = priorities.get(category, 1.0)
+        if isinstance(priority, bool) or not isinstance(priority, (int, float)) or not math.isfinite(priority) or priority < 0:
+            raise ValueError(f"invalid traveler priority for {category}")
         adjusted_weights[category] = base_weight * priority
     
     # Normalize weights
     total_weight = sum(adjusted_weights.values())
     if total_weight > 0:
         adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
+    else:
+        raise ValueError("at least one adjusted category weight must be positive")
     
-    # Calculate category scores (0-10 scale, higher = more risk)
+    # Calculate category scores from prevalence (0-10, higher = more risk).
+    # A category mentioned by 2 of 10 analyzed reviews receives raw score 2.0.
     category_scores = {}
     total_issues = 0
+    analyzed_reviews = classification.get("analyzed_reviews", 0)
     
     for category, data in classification.get("categories", {}).items():
         count = data.get("count", 0)
         total_issues += count
         
-        # Base score: logarithmic scale to avoid extreme values
-        if count == 0:
-            score = 0.0
-        else:
-            import math
-            score = min(10.0, 2.0 + 1.5 * math.log10(count + 1))
-        
-        # Adjust for recent issues (simple heuristic: all issues treated equally in v1)
+        review_rate = min(1.0, count / analyzed_reviews) if analyzed_reviews else 0.0
+        score = review_rate * 10.0
+
         category_scores[category] = {
             "issue_count": count,
+            "review_rate": round(review_rate, 4),
             "raw_score": round(score, 2),
             "weight": round(adjusted_weights.get(category, 0), 4),
         }
     
     # Calculate overall risk score (0-100, higher = more risk)
-    if classification.get("total_reviews", 0) == 0:
-        overall_score = 50.0  # Neutral when no data
+    if analyzed_reviews == 0:
+        overall_score = None
     else:
         weighted_sum = sum(
             category_scores[cat]["raw_score"] * category_scores[cat]["weight"]
@@ -141,18 +151,21 @@ def calculate_risk_score(
         overall_score = min(100.0, weighted_sum * 10)
     
     # Determine recommendation
-    if overall_score < 30:
-        recommendation = "recommended"
-        confidence = "high" if classification["analyzed_reviews"] >= 5 else "medium"
-    elif overall_score < 50:
-        recommendation = "acceptable_with_caveats"
-        confidence = "medium"
+    if overall_score is None:
+        risk_level = "insufficient_data"
+        confidence = "low"
+    elif overall_score < 20:
+        risk_level = "low"
+        confidence = "high" if analyzed_reviews >= 20 else "medium" if analyzed_reviews >= 5 else "low"
+    elif overall_score < 40:
+        risk_level = "moderate"
+        confidence = "high" if analyzed_reviews >= 20 else "medium" if analyzed_reviews >= 5 else "low"
     elif overall_score < 70:
-        recommendation = "proceed_with_caution"
-        confidence = "medium"
+        risk_level = "high"
+        confidence = "high" if analyzed_reviews >= 20 else "medium" if analyzed_reviews >= 5 else "low"
     else:
-        recommendation = "not_recommended"
-        confidence = "high" if total_issues >= 3 else "medium"
+        risk_level = "very_high"
+        confidence = "high" if analyzed_reviews >= 20 else "medium" if analyzed_reviews >= 5 else "low"
     
     # Generate pre-booking checklist
     checklist = []
@@ -162,13 +175,14 @@ def calculate_risk_score(
             checklist.append(f"Verify: {desc}")
     
     return {
-        "overall_risk_score": round(overall_score, 1),
-        "recommendation": recommendation,
+        "overall_risk_score": round(overall_score, 1) if overall_score is not None else None,
+        "risk_level": risk_level,
         "confidence": confidence,
         "total_issues": total_issues,
         "category_scores": category_scores,
         "pre_booking_checklist": checklist,
         "rule_trace": {
+            "formula": "category review rate * normalized category weight",
             "weights_used": adjusted_weights,
             "traveler_priorities": priorities,
         },

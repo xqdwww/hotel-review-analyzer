@@ -2,7 +2,9 @@
 
 import argparse
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -77,8 +79,13 @@ Input format (JSON):
     analyze_parser.add_argument(
         "--profile", "-p",
         choices=["general", "family", "business"],
-        default="general",
-        help="Traveler profile (default: general)",
+        default=None,
+        help="Built-in traveler profile (default: general; input traveler_profile priorities are merged on top)",
+    )
+    analyze_parser.add_argument(
+        "--force", "-F",
+        action="store_true",
+        help="Overwrite the output file if it exists",
     )
     
     return parser
@@ -92,23 +99,61 @@ def get_traveler_profile(profile_name: str) -> dict:
             "trip_type": "family",
             "priorities": {
                 "hygiene": 1.2,
-                "quiet_sleep": 1.3,
-                "temperature_stability": 1.2,
-                "location_accuracy": 0.9,
-                "value_for_money": 0.8,
+                "noise": 1.3,
+                "air_conditioning": 1.2,
+                "hot_water": 1.2,
+                "room_mismatch": 1.1,
+                "location": 0.9,
+                "hidden_fees": 1.0,
+                "service": 0.8,
             },
         },
         "business": {
             "trip_type": "business",
             "priorities": {
                 "hygiene": 1.0,
-                "quiet_sleep": 1.1,
-                "location_accuracy": 1.3,
-                "value_for_money": 0.6,
+                "noise": 1.1,
+                "air_conditioning": 1.0,
+                "hot_water": 1.0,
+                "room_mismatch": 1.0,
+                "location": 1.3,
+                "hidden_fees": 0.8,
+                "service": 0.8,
             },
         },
     }
     return profiles.get(profile_name, DEFAULT_TRAVELER_PROFILE).copy()
+
+
+def merge_traveler_profile(base: dict, custom: dict) -> dict:
+    """Merge a validated custom profile over a built-in profile."""
+    merged = {**base, **custom}
+    merged["priorities"] = {
+        **base.get("priorities", {}),
+        **custom.get("priorities", {}),
+    }
+    return merged
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    """Write a private report atomically with owner-only permissions."""
+    if path.is_symlink():
+        raise OSError(f"Refusing to overwrite symbolic link: {path}")
+    path = path.absolute()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+        os.chmod(path, 0o600)
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
 
 
 def cmd_analyze(args: argparse.Namespace) -> int:
@@ -117,11 +162,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     try:
         with args.input.open("r", encoding="utf-8") as f:
             data = json.load(f)
-    except FileNotFoundError:
-        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-        return 1
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON in input file: {e}", file=sys.stderr)
+        return 1
+    except OSError as e:
+        print(f"Error reading input file: {e}", file=sys.stderr)
         return 1
     
     # Validate input
@@ -133,7 +178,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         return 1
     
     # Get traveler profile
-    traveler_profile = get_traveler_profile(args.profile)
+    traveler_profile = get_traveler_profile(args.profile or "general")
+    if "traveler_profile" in data:
+        traveler_profile = merge_traveler_profile(traveler_profile, data["traveler_profile"])
     
     # Extract data
     hotel_info = data.get("hotel", {})
@@ -143,10 +190,14 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     classification = classify_reviews(reviews)
     
     # Calculate risk score
-    scoring = calculate_risk_score(
-        classification,
-        traveler_profile=traveler_profile,
-    )
+    try:
+        scoring = calculate_risk_score(
+            classification,
+            traveler_profile=traveler_profile,
+        )
+    except ValueError as e:
+        print(f"Scoring failed: {e}", file=sys.stderr)
+        return 1
     
     # Generate report
     json_report = generate_json_report(
@@ -157,20 +208,25 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     )
     
     # Write output
+    if args.output.exists() and not args.force:
+        print(f"Error: Output file exists: {args.output}", file=sys.stderr)
+        print("Use --force to overwrite.", file=sys.stderr)
+        return 1
+
     try:
         if args.format == "markdown":
             content = generate_markdown_report(json_report)
-            args.output.write_text(content, encoding="utf-8")
         else:
             content = json.dumps(json_report, indent=2, ensure_ascii=False)
-            args.output.write_text(content, encoding="utf-8")
+        atomic_write_text(args.output, content)
         
         print(f"Report written to: {args.output}")
-        print(f"Recommendation: {scoring['recommendation']}")
-        print(f"Risk Score: {scoring['overall_risk_score']}/100")
+        print(f"Risk Level: {scoring['risk_level']}")
+        score = scoring["overall_risk_score"] if scoring["overall_risk_score"] is not None else "N/A"
+        print(f"Risk Score: {score}/100")
         return 0
         
-    except IOError as e:
+    except OSError as e:
         print(f"Error writing output: {e}", file=sys.stderr)
         return 1
 
