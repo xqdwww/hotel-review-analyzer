@@ -32,7 +32,9 @@ def generate_json_report(
         "confidence": scoring["confidence"],
         "traveler_profile": {
             "trip_type": traveler_profile.get("trip_type", "general"),
+            "profile_id": traveler_profile.get("profile_id"),
             "priorities": traveler_profile.get("priorities", {}),
+            "tolerances": traveler_profile.get("tolerances", {}),
         },
         "risk_categories": {
             cat: data["issue_count"]

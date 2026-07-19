@@ -7,6 +7,8 @@ An explainable, configurable hotel review risk analyzer for traveler-specific de
 - **Offline Analysis**: No network dependencies
 - **Explainable Results**: Clear evidence and rule traces
 - **Configurable Profiles**: Family, business, general traveler modes
+- **Ctrip Candidate Ranking**: Use ratings as an entry pool, then rerank by traveler fit
+- **Evidence-Gated Deep Screen**: Require latest and separately collected low-score reviews
 - **Multi-format Output**: JSON and Markdown reports
 - **No External APIs**: Pure Python standard library
 
@@ -30,6 +32,12 @@ hotel-review-analyzer analyze --input reviews.json --format markdown --output re
 
 # With traveler profile
 hotel-review-analyzer analyze --input reviews.json --profile family --output report.json
+
+# Build a preference-reranked Ctrip destination Top 10
+hotel-review-analyzer rank-destination --input candidates.json --output shortlist.json
+
+# Deep-screen one selected hotel
+hotel-review-analyzer deep-screen --input deep-screen.json --output report.json
 ```
 
 Existing output files are not overwritten unless `--force` is supplied.
@@ -100,6 +108,7 @@ real-world hotel review dataset. Users supply review text in a local JSON file.
 - **noise**: Noise and soundproofing issues  
 - **air_conditioning**: Air conditioning problems
 - **hot_water**: Hot water stability issues
+- **facility**: Elevator, door-lock, network, or other facility stability issues
 - **room_mismatch**: Room type or facility mismatch
 - **location**: Location or transit description mismatch
 - **hidden_fees**: Unexpected fee, deposit, or refund issues
@@ -110,11 +119,57 @@ real-world hotel review dataset. Users supply review text in a local JSON file.
 - **general**: Balanced priorities
 - **family**: Higher weight on hygiene, quiet sleep, temperature stability
 - **business**: Higher weight on location accuracy
+- **hotel_family_comfort_v1**: Family comfort profile for Ctrip screening
 
 An input `traveler_profile.priorities` object can override individual category
 weights. Supported keys are the risk-category identifiers listed above plus
 `hidden_fees` and `service`. Profile multipliers must be finite non-negative
 numbers.
+
+### `hotel_family_comfort_v1`
+
+This profile uses three preference tiers:
+
+- High: hygiene, quiet sleep, air conditioning, hot water, facility stability,
+  and transport/location
+- Medium: room size/comfort, decor age, and location truthfulness
+- Low: ordinary breakfast, ordinary service, parking-process hassle, and price alone
+
+Price becomes material only when it is tied to a room/facility mismatch, hidden
+fee, arrival surcharge, or broken booking promise. Recent, specific issues
+repeated by multiple guests carry more weight than old or vague comments.
+
+## Ctrip Destination Scan
+
+`rank-destination` accepts a local JSON candidate pool captured from a Ctrip
+destination, city, commercial area, or attraction hotel list.
+
+1. Sort the visible list by overall rating, positive-review-first, or rating
+   descending.
+2. Capture 20-30 high-rating hotels as the entry pool (default 25).
+3. Include each hotel's name, URL, Ctrip rating, review count, price/range,
+   location, class, family tags, recent-review summary, visible negative summary,
+   and structured preference signals.
+4. Rerank with `hotel_family_comfort_v1` and emit Top 10.
+
+The Ctrip rating component is capped and is only an entry signal. The output
+keeps both `entry_rank` and `preference_rank`, explains keep/downrank reasons,
+and marks 2-3 hotels for deep screening. Candidate-stage output intentionally
+contains no final hotel verdict, risk score, or confidence.
+
+## Single-Hotel Deep Screen
+
+`deep-screen` requires all of the following:
+
+- `review_collection.sort_order` is `latest` (map UI labels such as latest
+  reviews or recent stays to this value)
+- a non-empty latest/recent sample
+- a separately collected non-empty low-score/negative sample
+- provenance on every review: `sample_bucket`, `is_recent`, and `specific`
+
+Recent and specific evidence receives multipliers. A concrete issue reported by
+multiple recent guests receives an additional repeat multiplier. Missing latest
+sorting or a separate negative sample is a validation error, not low-risk evidence.
 
 ## How Scoring Works
 

@@ -10,10 +10,11 @@ DEFAULT_HOTEL_WEIGHTS = {
     "noise": 20,
     "air_conditioning": 10,
     "hot_water": 10,
-    "room_mismatch": 15,
-    "location": 10,
-    "hidden_fees": 10,
-    "service": 5,
+    "facility": 10,
+    "room_mismatch": 12,
+    "location": 8,
+    "hidden_fees": 7,
+    "service": 3,
 }
 
 # Risk category definitions
@@ -33,6 +34,21 @@ RISK_CATEGORIES = {
     "hot_water": {
         "description": "Hot water stability issues",
         "keywords": ["热水不稳定", "没有热水", "忽冷忽热", "no hot water", "hot water was unstable", "hot water unstable"],
+    },
+    "facility": {
+        "description": "Facility stability issues",
+        "keywords": [
+            "电梯坏",
+            "电梯故障",
+            "门锁坏",
+            "网络不稳定",
+            "设施老旧损坏",
+            "lift broken",
+            "elevator broken",
+            "door lock broken",
+            "unstable wifi",
+            "broken facility",
+        ],
     },
     "room_mismatch": {
         "description": "Room type or facility mismatch",
@@ -60,6 +76,7 @@ DEFAULT_TRAVELER_PROFILE = {
         "noise": 1.0,
         "air_conditioning": 1.0,
         "hot_water": 1.0,
+        "facility": 1.0,
         "room_mismatch": 1.0,
         "location": 1.0,
         "hidden_fees": 1.0,
