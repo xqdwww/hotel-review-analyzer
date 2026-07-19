@@ -2,6 +2,20 @@
 
 An explainable, configurable hotel review risk analyzer for traveler-specific decision support.
 
+## v0.2.0 Highlights
+
+- Preference-based Ctrip hotel screening with destination ranking through
+  `rank-destination`.
+- Ctrip overall rating is an entry signal, not the final judgment.
+- A 20-30 hotel entry pool is reranked into a Top 10 candidate list using
+  `hotel_family_comfort_v1`.
+- Results preserve both `entry_rank` and `preference_rank`, and mark 2-3
+  candidates for further review.
+- The `deep-screen` command evaluates selected hotels using latest reviews and
+  a separately collected negative/low-score review sample.
+- Destination scan results are candidates only, not final PASS/REJECT
+  decisions, and therefore contain no final risk score or confidence.
+
 ## Features
 
 - **Offline Analysis**: No network dependencies
