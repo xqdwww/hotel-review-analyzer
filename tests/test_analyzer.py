@@ -1,6 +1,7 @@
 """Tests for Hotel Review Analyzer."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -11,7 +12,12 @@ from hotel_review_analyzer.schema import (
     extract_review_signals,
 )
 from hotel_review_analyzer.classify import classify_reviews, calculate_risk_score
-from hotel_review_analyzer.cli import get_traveler_profile, main, merge_traveler_profile
+from hotel_review_analyzer.cli import (
+    get_traveler_profile,
+    main,
+    merge_traveler_profile,
+    write_json_output,
+)
 
 
 class TestInputValidation:
@@ -209,6 +215,20 @@ class TestProfilesAndCLI:
         assert main(["analyze", "--input", str(fixture), "--output", str(output)]) == 1
         assert output.read_text() == "keep"
         assert main(["analyze", "--input", str(fixture), "--output", str(output), "--force"]) == 0
+        assert output.stat().st_mode & 0o777 == 0o600
+
+    def test_output_race_does_not_overwrite_new_file(self, tmp_path, monkeypatch):
+        output = tmp_path / "report.json"
+        real_link = os.link
+
+        def racing_link(source, destination):
+            output.write_text("racer")
+            return real_link(source, destination)
+
+        monkeypatch.setattr(os, "link", racing_link)
+
+        assert write_json_output(output, {"status": "new"}, force=False) == 1
+        assert output.read_text() == "racer"
 
     def test_output_symlink_is_refused_even_with_force(self, tmp_path):
         fixture = Path(__file__).parent / "fixtures" / "sample_hotel.json"

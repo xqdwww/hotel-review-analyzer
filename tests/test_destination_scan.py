@@ -39,7 +39,7 @@ def make_candidate(rank, rating, name=None, **signal_overrides):
 def make_scan_input():
     candidates = [
         make_candidate(rank, round(4.91 - rank * 0.05, 2))
-        for rank in range(1, 13)
+        for rank in range(1, 23)
     ]
     candidates[0] = make_candidate(
         1,
@@ -110,6 +110,16 @@ def test_destination_input_is_valid_and_defaults_to_20_30_pool_target():
     assert 20 <= data["candidate_pool_target"] <= 30
 
 
+def test_destination_input_requires_at_least_20_candidates():
+    data = make_scan_input()
+    data["candidates"] = data["candidates"][:19]
+
+    is_valid, issues = validate_destination_scan_input(data)
+
+    assert not is_valid
+    assert any("at least 20" in issue for issue in issues)
+
+
 def test_rating_is_entry_only_and_entry_rank_12_can_rerank_first():
     report = rank_destination_candidates(make_scan_input())
     top = report["final_top10"]
@@ -154,7 +164,18 @@ def test_scan_output_is_top10_without_final_hotel_judgment_fields():
     for forbidden in ["verdict", "risk_score", "confidence", "evidence_status"]:
         assert forbidden not in report
         assert all(forbidden not in candidate for candidate in report["final_top10"])
-    assert 2 <= sum(item["should_deep_screen"] for item in report["final_top10"]) <= 3
+    assert sum(item["should_deep_screen"] for item in report["final_top10"]) == 3
+
+
+def test_requested_deep_screen_shortlist_size_is_preserved():
+    data = make_scan_input()
+    data["deep_screen_shortlist_size"] = 2
+    for candidate in data["candidates"]:
+        candidate["preference_signals"]["recent_hygiene_issue_count"] = 3
+
+    report = rank_destination_candidates(data)
+
+    assert sum(item["should_deep_screen"] for item in report["final_top10"]) == 2
 
 
 def test_destination_ranker_cli_writes_standalone_json(tmp_path):

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Enforce the documented 20-30 hotel destination candidate pool.
+- Mark exactly the requested 2 or 3 Top 10 candidates for deep screening.
+- Prevent a concurrently created output from being overwritten without
+  `--force`, while preserving owner-only permissions without a post-rename
+  path operation.
+
+### Changed
+
+- Update and pin the GitHub Actions checkout and Python setup steps.
+
 ## [0.2.0] - 2026-07-19
 
 ### Added

@@ -67,8 +67,8 @@ def validate_destination_scan_input(data: Dict[str, Any]) -> Tuple[bool, List[st
     if not isinstance(candidates, list):
         issues.append("candidates must be an array")
         return len(issues) == 0, issues
-    if len(candidates) < FINAL_CANDIDATE_LIMIT:
-        issues.append("candidates must contain at least 10 hotels to emit Top 10")
+    if len(candidates) < 20:
+        issues.append("candidates must contain at least 20 hotels")
     if len(candidates) > 30:
         issues.append("candidates must not exceed 30 hotels")
 
@@ -287,9 +287,7 @@ def rank_destination_candidates(data: Dict[str, Any]) -> Dict[str, Any]:
                 "preference_score": item["preference_score"],
                 "keep_reasons": item["keep_reasons"],
                 "downrank_reasons": item["downrank_reasons"],
-                "should_deep_screen": (
-                    preference_rank <= deep_screen_count and item["hard_issue_total"] < 2
-                ),
+                "should_deep_screen": preference_rank <= deep_screen_count,
             }
         )
 
@@ -298,9 +296,6 @@ def rank_destination_candidates(data: Dict[str, Any]) -> Dict[str, Any]:
         "List-page summaries are not a substitute for latest and low-score review screening.",
         "This candidate-stage output intentionally has no final hotel verdict or confidence.",
     ]
-    if len(data["candidates"]) < 20:
-        caveats.append("The supplied fixture has fewer than the default 20-30 entry candidates.")
-
     return {
         "scan_status": "candidate_shortlist",
         "platform": "ctrip",

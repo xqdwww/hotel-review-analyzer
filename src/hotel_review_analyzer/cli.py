@@ -106,7 +106,7 @@ Input format (JSON):
         "-i",
         required=True,
         type=Path,
-        help="Input JSON with 10-30 Ctrip hotel candidates",
+        help="Input JSON with 20-30 Ctrip hotel candidates",
     )
     destination_parser.add_argument(
         "--output",
@@ -203,7 +203,7 @@ def merge_traveler_profile(base: dict, custom: dict) -> dict:
     return merged
 
 
-def atomic_write_text(path: Path, content: str) -> None:
+def atomic_write_text(path: Path, content: str, *, force: bool) -> None:
     """Write a private report atomically with owner-only permissions."""
     if path.is_symlink():
         raise OSError(f"Refusing to overwrite symbolic link: {path}")
@@ -217,8 +217,14 @@ def atomic_write_text(path: Path, content: str) -> None:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_path, path)
-        os.chmod(path, 0o600)
+        if force:
+            os.replace(temporary_path, path)
+        else:
+            try:
+                os.link(temporary_path, path)
+            except FileExistsError as exc:
+                raise OSError("Output appeared during write; use --force to overwrite") from exc
+            temporary_path.unlink()
     except Exception:
         temporary_path.unlink(missing_ok=True)
         raise
@@ -248,7 +254,7 @@ def write_json_output(path: Path, report: dict, force: bool) -> int:
         print("Use --force to overwrite.", file=sys.stderr)
         return 1
     try:
-        atomic_write_text(path, json.dumps(report, indent=2, ensure_ascii=False))
+        atomic_write_text(path, json.dumps(report, indent=2, ensure_ascii=False), force=force)
     except OSError as exc:
         print(f"Error writing output: {exc}", file=sys.stderr)
         return 1
@@ -351,7 +357,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             content = generate_markdown_report(json_report)
         else:
             content = json.dumps(json_report, indent=2, ensure_ascii=False)
-        atomic_write_text(args.output, content)
+        atomic_write_text(args.output, content, force=args.force)
         
         print(f"Report written to: {args.output}")
         print(f"Risk Level: {scoring['risk_level']}")
